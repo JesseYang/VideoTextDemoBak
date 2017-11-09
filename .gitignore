@@ -1,0 +1,13 @@
+output*
+classify_frames
+detect_text_area
+new_test_dataset
+*__pycache__
+models
+segment_lines
+test_dataset
+recognize_sequences
+test_inputs
+*.txt
+data_new
+new_canvas.png
