@@ -136,6 +136,7 @@ class Extractor():
             if frame_idx - margin < 0 or frame_idx + margin >= self.total_frame:
                 continue
             selected_frames = resized_frames[frame_idx - margin:frame_idx + margin + 1]
+           
             tensor = np.asarray(selected_frames)
             tensor = tensor.swapaxes(0,2)
             tensors.append(tensor)
@@ -958,7 +959,7 @@ class Extractor():
 
 if __name__ == '__main__':
     ext = Extractor()
-    ext.from_video('test_datasets/第一批_20170911/VID_20170911_134231.mp4')
+    ext.from_video('test_dataset/第一批_20170911/VID_20170911_134231.mp4')
     ext.save()
     ext.gui()
     # ext.generate_video()

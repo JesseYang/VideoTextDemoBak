@@ -10,7 +10,7 @@ import time
 import functools
 import os
 from copy import deepcopy
-
+import pdb
 from tensorpack import *
 
 # try:
@@ -920,7 +920,9 @@ class Extractor():
             for i in range(len(pure_outputs)):
                 data = pure_outputs[i]
                 information = deepcopy(informations[i])
+                information['img'] = inputs[i]
                 outputs.append([data, information])
+        # pdb.set_trace()
         self.output_segment_lines = outputs
 
     
@@ -1034,11 +1036,21 @@ class Extractor():
         # save output of segment_lines
         for i,j in zip(self.output_detect_text_area, self.output_segment_lines):
             img = i[0]
-            mask = np.expand_dims(j[0], -1)
-            mask = np.concatenate((mask, np.zeros_like(mask), np.zeros_like(mask)), axis=2)
+            print(img.shape)
+            img = j[1]['img']
+            mask = j[0]
+            print(img.shape)
+            # mask = np.expand_dims(j[0], -1)
+            # mask = np.concatenate((mask, np.zeros_like(mask), np.zeros_like(mask)), axis=2)
+            # mask = mask
+            boolean = mask == 255
             information = j[1]
-            canvas = img * 0.5 + mask * 0.5
-            misc.imsave('{}/segment_lines/{}-({},{})({},{}).png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), canvas)
+            mask = mask == 1
+            mask_img = np.zeros(img.shape)
+            mask_img[:,:,2][mask] = 255
+            canvas = img * 0.7 + mask_img * 0.3
+            cv2.imwrite('{}/segment_lines/{}-({},{})({},{}).png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), canvas)
+            misc.imsave('{}/segment_lines/{}-({},{})({},{})-mask.png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), mask)
 
         # save output of extract_lines
         for data in self.output_extract_lines:
@@ -1051,6 +1063,71 @@ class Extractor():
         for data in self.output_recognize_sequences:
             f = open('{}/recognize_sequences/{}-({},{})({},{})-({},{})({},{}).txt'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), 'w')
             f.write(data[0])
+
+    def gui(self):
+        def sort_areas(l):
+            if len(l) == 1:
+                return l
+            
+        def sort_lines(l):
+            # l = sorted(l, key = lambda x: x[3][1])
+            l = sorted(l, key = lambda x: (x[1]['line_area'][0], x[1]['line_area'][1]))
+            return l
+        self.gui_frames = []
+        # pdb.set_trace()
+        for idx in range(len(self.output_segment_lines)):
+            img = np.copy(self.output_extract_frames[idx][0])
+            origin_h, origin_w = img.shape[:2]
+            mask = np.copy(self.output_segment_lines[idx][0])
+            x, y, x_end, y_end = self.output_segment_lines[idx][1]['detect_area']
+            filled = mask.astype(np.uint8).copy()
+            for line in self.output_recognize_sequences:
+                # same frame and same area
+                if line[1] == self.output_extract_frames[idx][1] and line[2] == [x, y, x_end, y_end]:
+                    txt = ''.join(line[0].split())
+                    if len(txt) == 0:
+                        cv2.fillPoly(filled, pts =[line[4]], color = 0)
+            mask = np.pad(filled, ((y, origin_h - y_end), (x, origin_w - x_end)), 'constant', constant_values = 0)
+            mask = mask == 1
+            mask_img = np.zeros(img.shape)
+            mask_img[:,:,2][mask] = 255
+            img = img * 0.7 + mask_img * 0.3
+            cv2.rectangle(img, (x,y), (x_end, y_end), (0, 0, 255))
+            self.gui_frames.append(img)
+
+        self.gui_preds = []
+        # sort by frame_idx, det_area, and line_area
+        pdb.set_trace()
+        predictions = self.output_recognize_sequences
+        predictions = sorted(predictions, key = lambda pre_ : (pre_[1]['frame_idx'], pre_[1]['detect_area'], pre_[1]['line_area']))
+        # predictions = sorted(predictions, key = itemgetter(1,2,3))
+        # split by frame_idx
+        # predictions_per_frame = [list(g) for k, g in groupby(predictions, lambda x: x[1])]
+        predictions_per_frame = [list(g) for k, g in groupby(predictions, lambda x: x[1]['frame_idx'])]
+
+        # 同帧不同的det_area排序，先上后下，先左后右
+        # 上下：比较y，左右：比较x 
+        # 每帧分别排序，每个det_area分别排序，根据x, y, x_end, y_end来排序
+        output_per_frame = []
+        for idx, pred_each_frame in enumerate(predictions_per_frame):
+            # predictions_per_det_area = [list(g) for k, g in groupby(pred_each_frame, lambda x: x[2])]
+            predictions_per_det_area = [list(g) for k, g in groupby(pred_each_frame, lambda x: x[1]['detect_area'])]
+            # 按先上后下，先左后右排序
+            sorted_areas = sort_areas(predictions_per_det_area)
+            # 对每一个det_area
+            output_lines = []
+            for det_area_idx, pred_each_det_area in enumerate(sorted_areas):
+                # 先上后下，先左后右（合并）
+                sorted_lines = sort_lines(pred_each_det_area)
+                output_lines.append('\n'.join(i[0] for i in sorted_lines if i[0] != ''))
+            output_per_frame.append('\n'.join(output_lines))
+            self.gui_preds = output_per_frame
+
+        for idx, img in enumerate(self.gui_frames):
+            cv2.imwrite('{}/gui_frames/{}.png'.format(self.filename, idx), img)
+        for idx, pred in enumerate(self.gui_preds):
+            open('{}/gui_preds/{}.txt'.format(self.filename, idx), 'w').write(pred)
+
 if __name__ == '__main__':
     # ==================================================================
     # TEST functions

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter.filedialog import askopenfilename, askdirectory
 from tkinter.messagebox import askquestion
-from demo import Extractor
+from demo_neo import Extractor
 from PIL import Image
 from PIL import ImageTk
 import os
@@ -9,7 +9,7 @@ import threading
 import time
 import numpy as np
 import cv2
-
+import pdb
 from GUI.widgets import *
 
 STATE_UNINITIALIZED = 'Uninitialized'
