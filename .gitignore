@@ -1,5 +1,6 @@
 output*
 classify_frames
+detect
 detect_text_area
 new_test_dataset
 *__pycache__

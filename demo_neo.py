@@ -28,12 +28,12 @@ from tensorpack import *
 # except Exception:
 # import models
 from classify_frames.train import Model as Model_classify_frames
-from detect_text_area.train import Model as Model_detect_text_area
+from detect.train import Model as Model_detect_text_area
 from segment_lines.train import Model as Model_segment_lines
 from recognize_sequences.train import Model as Model_recognize_sequences
 # import configs
 from classify_frames.cfgs.config import cfg as cfg_classify_frames
-from detect_text_area.cfgs.config import cfg as cfg_detect_text_area
+from detect.cfgs.config import cfg as cfg_detect_text_area
 from segment_lines.cfgs.config import cfg as cfg_segment_lines
 from recognize_sequences.cfgs.config import cfg as cfg_recognize_sequences
 from recognize_sequences.mapper import Mapper
@@ -50,6 +50,7 @@ def timethis(func):
     return wrapper
 
 def cap_video(video_path):
+    print(video_path)
     cap = cv2.VideoCapture(video_path)
     total_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     return [cap.read()[1] for _ in range(total_frame)]
@@ -69,6 +70,7 @@ def classify_frames(inputs, pred_func):
         resized_frames = [cv2.cvtColor(cv2.resize(i, (224, 224)), cv2.COLOR_BGR2GRAY) for i in inputs]
         # generate tensors in shape of (224, 224, c)
         tensors = []
+      
         for frame_idx in range(total_frame):
             if frame_idx - margin < 0 or frame_idx + margin >= total_frame:
                 continue
@@ -156,7 +158,7 @@ def extract_frames(inputs, label):
 
     return outputs
 
-def detect_text_area(inputs, pred_func):
+def detect_text_area(inputs, pred_func, enlarge_ratio=1.1):
     def preprocess(inputs):
         # resize images and convert BGR to RGB
         rgb_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in inputs]
@@ -289,9 +291,19 @@ def detect_text_area(inputs, pred_func):
         for klass, k_boxes in nms_boxes.items():
             for box_idx, each_box in enumerate(k_boxes):
                 [conf, xmin, ymin, xmax, ymax] = each_box
-                x, y, x_end, y_end = int(xmin), int(ymin), int(xmax), int(ymax)
-                cropped_img = img[y:y_end, x:x_end]
-                det_area = [x, y, x_end, y_end]
+                xmin, ymin, xmax, ymax = int(xmin), int(ymin), int(xmax), int(ymax)
+
+                xcenter = (xmin + xmax) / 2
+                ycenter = (ymin + ymax) / 2
+                width = (xmax - xmin) * enlarge_ratio
+                height = (ymax - ymin) * enlarge_ratio
+                xmin = np.max([0, int(xcenter - width / 2)])
+                ymin = np.max([0, int(ycenter - height / 2)])
+                xmax = np.min([ori_width - 1, int(xcenter + width / 2)])
+                ymax = np.min([ori_height - 1, int(ycenter + height / 2)])
+
+                cropped_img = img[ymin:ymax, xmin:xmax]
+                det_area = [xmin, ymin, xmax, ymax]
                 output.extend([cropped_img, {'detect_area': det_area, 'type': klass, 'raw_img': img}])
         
         return output
@@ -833,7 +845,7 @@ class Extractor():
         def _init_models():
             # Load weights
             weights_classify_frames = SaverRestore('models/classify_frames')
-            weights_detect_text_area = SaverRestore('models/detect_text_area')
+            weights_detect_text_area = SaverRestore('models/detect')
             weights_segment_lines = SaverRestore('models/segment_lines')
             weights_recognize_sequences = SaverRestore('models/recognize_sequences')
             
@@ -1066,12 +1078,14 @@ class Extractor():
 
     def gui(self):
         def sort_areas(l):
+            # TODO
+            # 文本区域/图/表， 应返回文本区域的，排序后结果
             if len(l) == 1:
                 return l
             
         def sort_lines(l):
             # l = sorted(l, key = lambda x: x[3][1])
-            l = sorted(l, key = lambda x: (x[1]['line_area'][0], x[1]['line_area'][1]))
+            l = sorted(l, key = lambda x: (x[1]['line_area'][1], x[1]['line_area'][0]))
             return l
         self.gui_frames = []
         # pdb.set_trace()
@@ -1097,14 +1111,20 @@ class Extractor():
 
         self.gui_preds = []
         # sort by frame_idx, det_area, and line_area
-        pdb.set_trace()
+        # pdb.set_trace()
         predictions = self.output_recognize_sequences
         predictions = sorted(predictions, key = lambda pre_ : (pre_[1]['frame_idx'], pre_[1]['detect_area'], pre_[1]['line_area']))
+
         # predictions = sorted(predictions, key = itemgetter(1,2,3))
         # split by frame_idx
         # predictions_per_frame = [list(g) for k, g in groupby(predictions, lambda x: x[1])]
         predictions_per_frame = [list(g) for k, g in groupby(predictions, lambda x: x[1]['frame_idx'])]
-
+        for i in predictions_per_frame:
+            for j in i:
+                if j[1]['frame_idx'] != i[0][1]['frame_idx']:
+                    print(i)
+                    print('---')
+                    print(j)
         # 同帧不同的det_area排序，先上后下，先左后右
         # 上下：比较y，左右：比较x 
         # 每帧分别排序，每个det_area分别排序，根据x, y, x_end, y_end来排序
