@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter.filedialog import askopenfilename, askdirectory
 from tkinter.messagebox import askquestion
-from demo_neo import Extractor
+from demo_neo_test import Extractor
 from PIL import Image
 from PIL import ImageTk
 import os
@@ -142,6 +142,7 @@ class Extractor_GUI():
 
     
     def load(self, res_dir):
+        print("res_dir", res_dir)
         frame_dir = os.path.join(res_dir, 'gui_frames')
         num = len(os.listdir(frame_dir))
         frame_path_collections = [os.path.join(frame_dir, '{}.png'.format(i)) for i in range(num)]

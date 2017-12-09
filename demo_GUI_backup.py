@@ -30,20 +30,20 @@ class Extractor_GUI():
         # ====================================================================
         # canvas
         # ====================================================================
-        self.fm_canvas = tk.Frame(self.window, width = 600, height = 800)
+        self.fm_canvas = tk.Frame(self.window, width = 600, height = 400)
         self.fm_canvas.grid(row = 0, column = 0, padx=10, pady=2)
 
-        self.canvas = ICanvas(self.fm_canvas, width = 600, height = 800)
+        self.canvas = ICanvas(self.fm_canvas, width = 600, height = 400)
         self.canvas.grid(row = 0, column = 0)
 
-        self.fm_pred = tk.Frame(self.window, width = 300, height =800)
+        self.fm_pred = tk.Frame(self.window, width = 300, height =400)
         self.fm_pred.grid(row = 0, column = 1)
-        self.txt_pred = tk.Text(self.fm_pred, height = 58)
+        self.txt_pred = tk.Text(self.fm_pred, height = 29)
         self.txt_pred.grid(row = 0, column = 0)
         # ====================================================================
         # control bar
         # ====================================================================
-        self.fm_control = tk.Frame(self.window, width=600, height=100, background = '#FFFFFF')
+        self.fm_control = tk.Frame(self.window, width=600, height=50, background = '#FFFFFF')
         self.fm_control.grid(row = 1, column=0, padx=10, pady=2)
         self.btn_prev_frame = tk.Button(self.fm_control, text='Prev Frame', command = self.__action_prev_frame, state = 'disabled')
         self.btn_prev_frame.grid(row = 0, column=0, padx=10, pady=2)
@@ -56,7 +56,7 @@ class Extractor_GUI():
         # ====================================================================
         # status bar
         # ====================================================================
-        self.fm_status = tk.Frame(self.window, width = 300, height = 100, background = '#FFFFFF')
+        self.fm_status = tk.Frame(self.window, width = 300, height = 50, background = '#FFFFFF')
         self.fm_status.grid(row = 1, column=1, padx=10, pady=2)
         self.btn_new = tk.Button(self.fm_status, text='New', command = self.__action_browse, state = 'disabled')
         self.btn_new.grid(row = 0, column=3, padx=10, pady=2)
