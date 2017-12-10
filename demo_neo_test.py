@@ -163,10 +163,7 @@ def detect_text_area(inputs, pred_func, enlarge_ratio=1.1):
         # resize images and convert BGR to RGB
         rgb_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in inputs]
         resized_imgs = [cv2.resize(i, (img_w, img_h)) for i in rgb_imgs]
-        ###yjf
-        resized_imgs = [np.expand_dims(i, axis=0) for i in resized_imgs]
-        # spec_mask = [np.zeros((cfg_detect_text_area.n_boxes, img_w // 32, img_h // 32), dtype=float) == 0 for _ in rgb_imgs]
-
+        spec_mask = [np.zeros((cfg_detect_text_area.n_boxes, img_w // 32, img_h // 32), dtype=float) == 0 for _ in rgb_imgs]
         return resized_imgs
 
 
@@ -313,11 +310,12 @@ def detect_text_area(inputs, pred_func, enlarge_ratio=1.1):
 
     def _batch_data(data, batch_size):
         batched_data = batch_data(data, batch_size)
-        ###yjf
-        spec_mask = [(np.zeros((i.shape[0], cfg_detect_text_area.n_boxes, img_h // 32, img_w // 32), dtype=bool) == 0) for i in batched_data]
-        print(spec_mask[0].shape)
+        spec_mask = [np.ones((i.shape[0], cfg_detect_text_area.n_boxes, img_h // 32, img_w // 32), dtype=bool) for i in batched_data]
         return list(zip(batched_data, spec_mask))
 
+
+
+    
     img_h, img_w = cfg_detect_text_area.img_h, cfg_detect_text_area.img_w
     batch_size = cfg_detect_text_area.batch_size
 
@@ -643,6 +641,7 @@ def new_extract_lines(inputs):
 
    
     res = []
+    error_idx = []
     for img_idx, each_input in enumerate(inputs):
         img, mask = each_input
         if len(img.shape) == 3:
@@ -650,10 +649,17 @@ def new_extract_lines(inputs):
         H, W = img.shape
         # find all contours
         im2, contours, hierarchy = cv2.findContours(mask.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        # current_contours_num = len(contours)
+        # print("contours num ", current_contours_num)
+        error_contours_num = 0
         for each_contour in contours:
-
             x, y, w, h = cv2.boundingRect(each_contour)
+            # print('area:',w*h)
+
             if w * h <=250:
+                error_contours_num += 1
+                if error_contours_num == len(contours):
+                    error_idx.append(img_idx)
                 continue
             
             isolated = np.zeros((H, W), np.uint8)
@@ -742,7 +748,7 @@ def new_extract_lines(inputs):
                     'binary': mask[h_idx_start:h_idx_end, w_idx_start:w_idx_end]
                 }
                 res.append([data, information])
-    return res
+    return res, error_idx
 
 def recognize_sequences(inputs, pred_func):
     def preprocess(inputs):
@@ -808,6 +814,7 @@ class Extractor():
     def __init__(self):
         def _init_models():
             # Load weights
+            self.video_path = ''
             weights_classify_frames = SaverRestore('models/classify_frames')
             weights_detect_text_area = SaverRestore('models/detect')
             weights_segment_lines = SaverRestore('models/segment_lines')
@@ -838,6 +845,7 @@ class Extractor():
             im = Image.fromarray(img)
             im = im.transpose(Image.ROTATE_270)
             return np.array(im)
+        self.video_path = video_path
         frames = cap_video(video_path)
         height, width = frames[0].shape[:2]
         if width > height:
@@ -882,14 +890,16 @@ class Extractor():
         self.output_detect_text_area = outputs
 
     def _segment_lines(self):
-        print("detect_area num: ", len(self.output_detect_text_area))
+        print('segmenting lines ...')
         inputs = []
         outputs = []
         informations = []
+        
         for i in self.output_detect_text_area:
             if i[1]['type'] == 'text_area':
                 inputs.append(i[0])
                 informations.append(i[1])
+  
         pred_func = self.predictor_segment_lines
         if len(inputs) > 0:
             pure_outputs = segment_lines(inputs, pred_func)
@@ -899,23 +909,29 @@ class Extractor():
                 information['img'] = inputs[i]
                 outputs.append([data, information])
         # pdb.set_trace()
-        self.output_segment_lines = outputs
 
+        self.output_segment_lines = outputs
+      
     
     def _extract_lines(self):
         print('extracting lines ...')
         inputs = []
         informations = []
-        print("detect_area num: ", len(self.output_detect_text_area))
-        pirnt("segment_line num: ", len(self.output_segment_lines))
+       
         for i,j in zip(self.output_detect_text_area, self.output_segment_lines):
             inputs.append([i[0], j[0]])
             informations.append(j[1])
-        pure_outputs = new_extract_lines(inputs)
+        
+        pure_outputs, error_idx_lists = new_extract_lines(inputs)
+        if len(error_idx_lists) > 0:
+            for err_x in error_idx_lists:
+                inputs = inputs.remove(inputs[err_x])
+                informations = informations.remove(informations[err_x])
+
+
+
         grouped = [list(g) for k,g in groupby(pure_outputs, lambda x: x[1]['img_idx'])]
         outputs = []
-        print('grouped num:', len(grouped))
-        print('informations num: ', len(informations))
         for i in range(len(grouped)):
             added_information = deepcopy(informations[i])
             for j in grouped[i]:
@@ -973,7 +989,8 @@ class Extractor():
     def save(self):
         import os, shutil
         from datetime import datetime
-        self.filename = 'output' + datetime.now().strftime('%Y%m%d-%H%M%S')
+        video_name  = self.video_path.split("/")[-1]
+        self.filename = 'output' + video_name + "_" + datetime.now().strftime('%Y%m%d-%H%M%S')
         filename = self.filename
         if os.path.isdir(filename):
             shutil.rmtree(filename)
@@ -1037,9 +1054,15 @@ class Extractor():
         # save output of extract_lines
         for data in self.output_extract_lines:
             # line_img = cv2.cvtColor(data[0].astype(np.uint8), cv2.COLOR_BGR2GRAY)
-            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[0])
-            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[1]['before_align'])
-            
+            # cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[0])
+            # cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[1]['before_align'])
+            detect_area_coor = [data[1]['detect_area'][1], data[1]['detect_area'][0], data[1]['detect_area'][3], data[1]['detect_area'][2]]
+            line_area_coor = [data[1]['line_area'][1], data[1]['line_area'][0], data[1]['line_area'][3], data[1]['line_area'][2]]
+
+            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'],\
+            detect_area_coor[0], detect_area_coor[1], detect_area_coor[2], detect_area_coor[3], line_area_coor[0], line_area_coor[1], line_area_coor[2], line_area_coor[3]), data[0])
+            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'],\
+            detect_area_coor[0], detect_area_coor[1], detect_area_coor[2], detect_area_coor[3], line_area_coor[0], line_area_coor[1], line_area_coor[2], line_area_coor[3]), data[1]['before_align'])
         
         # save output of recognize_sequences
         for data in self.output_recognize_sequences:
@@ -1303,5 +1326,6 @@ if __name__ == '__main__':
     # ==================================================================
 
     ext = Extractor()
-    ext.from_video('test_dataset/第一批_20170911/VID_20170911_131636.mp4')
+    # ext.from_video('test_dataset/第一批_20170911/VID_20170911_131636.mp4')
+    ext.from_video('/home/user/VideoText/classify_frames/label_tool/raw_videos/data_20171204/VID_20171204_125417.mp4')
     ext.save()

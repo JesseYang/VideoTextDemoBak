@@ -36,9 +36,9 @@ class Extractor_GUI():
         self.canvas = ICanvas(self.fm_canvas, width = 600, height = 800)
         self.canvas.grid(row = 0, column = 0)
 
-        self.fm_pred = tk.Frame(self.window, width = 300, height =800)
+        self.fm_pred = tk.Frame(self.window, width = 350, height =800)
         self.fm_pred.grid(row = 0, column = 1)
-        self.txt_pred = tk.Text(self.fm_pred, height = 58)
+        self.txt_pred = tk.Text(self.fm_pred, height = 58, width = 85)
         self.txt_pred.grid(row = 0, column = 0)
         # ====================================================================
         # control bar
@@ -70,6 +70,7 @@ class Extractor_GUI():
 
     def __init_model(self):
         def init():
+           
             self.cnt_status = STATE_INITIALIZING
             self.ext = Extractor()
             self.cnt_status = STATE_READY

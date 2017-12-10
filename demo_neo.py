@@ -304,7 +304,7 @@ def detect_text_area(inputs, pred_func, enlarge_ratio=1.1):
 
                 cropped_img = img[ymin:ymax, xmin:xmax]
                 det_area = [xmin, ymin, xmax, ymax]
-                output.extend([cropped_img, {'detect_area': det_area, 'type': klass, 'raw_img': img}])
+                output.extend([cropped_img, {'detect_area': det_area, 'type': klass, 'raw_img': img, 'conf': conf}])
         
         return output
 
@@ -313,9 +313,6 @@ def detect_text_area(inputs, pred_func, enlarge_ratio=1.1):
         spec_mask = [np.ones((i.shape[0], cfg_detect_text_area.n_boxes, img_h // 32, img_w // 32), dtype=bool) for i in batched_data]
         return list(zip(batched_data, spec_mask))
 
-
-
-    
     img_h, img_w = cfg_detect_text_area.img_h, cfg_detect_text_area.img_w
     batch_size = cfg_detect_text_area.batch_size
 
@@ -814,6 +811,7 @@ class Extractor():
     def __init__(self):
         def _init_models():
             # Load weights
+            self.video_path = ''
             weights_classify_frames = SaverRestore('models/classify_frames')
             weights_detect_text_area = SaverRestore('models/detect')
             weights_segment_lines = SaverRestore('models/segment_lines')
@@ -844,6 +842,7 @@ class Extractor():
             im = Image.fromarray(img)
             im = im.transpose(Image.ROTATE_270)
             return np.array(im)
+        self.video_path = video_path
         frames = cap_video(video_path)
         height, width = frames[0].shape[:2]
         if width > height:
@@ -897,6 +896,7 @@ class Extractor():
             if i[1]['type'] == 'text_area':
                 inputs.append(i[0])
                 informations.append(i[1])
+  
         pred_func = self.predictor_segment_lines
         if len(inputs) > 0:
             pure_outputs = segment_lines(inputs, pred_func)
@@ -906,6 +906,7 @@ class Extractor():
                 information['img'] = inputs[i]
                 outputs.append([data, information])
         # pdb.set_trace()
+
         self.output_segment_lines = outputs
       
     
@@ -985,7 +986,8 @@ class Extractor():
     def save(self):
         import os, shutil
         from datetime import datetime
-        self.filename = 'output' + datetime.now().strftime('%Y%m%d-%H%M%S')
+        video_name  = self.video_path.split("/")[-1]
+        self.filename = 'output-' + video_name + "-" + datetime.now().strftime('%Y%m%d%H%M%S')
         filename = self.filename
         if os.path.isdir(filename):
             shutil.rmtree(filename)
@@ -1043,15 +1045,26 @@ class Extractor():
             mask_img = np.zeros(img.shape)
             mask_img[:,:,2][mask] = 255
             canvas = img * 0.7 + mask_img * 0.3
-            cv2.imwrite('{}/segment_lines/{}-({},{})({},{}).png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), canvas)
-            misc.imsave('{}/segment_lines/{}-({},{})({},{})-mask.png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), mask)
+
+            detect_area_coor = [j[1]['detect_area'][1], j[1]['detect_area'][0], j[1]['detect_area'][3], j[1]['detect_area'][2]]
+
+            # cv2.imwrite('{}/segment_lines/{}-({},{})({},{}).png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), canvas)
+            # misc.imsave('{}/segment_lines/{}-({},{})({},{})-mask.png'.format(self.filename,j[1]['frame_idx'], *(j[1]['detect_area'])), mask)
+            cv2.imwrite('{}/segment_lines/{}-({},{})({},{}).png'.format(self.filename,j[1]['frame_idx'], *(detect_area_coor)), canvas)
+            misc.imsave('{}/segment_lines/{}-({},{})({},{})-mask.png'.format(self.filename,j[1]['frame_idx'], *(detect_area_coor)), mask)
 
         # save output of extract_lines
         for data in self.output_extract_lines:
             # line_img = cv2.cvtColor(data[0].astype(np.uint8), cv2.COLOR_BGR2GRAY)
-            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[0])
-            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[1]['before_align'])
-            
+            # cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[0])
+            # cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'], *data[1]['detect_area'], *data[1]['line_area']), data[1]['before_align'])
+            detect_area_coor = [data[1]['detect_area'][1], data[1]['detect_area'][0], data[1]['detect_area'][3], data[1]['detect_area'][2]]
+            line_area_coor = [data[1]['line_area'][1], data[1]['line_area'][0], data[1]['line_area'][3], data[1]['line_area'][2]]
+
+            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}).png'.format(self.filename, data[1]['frame_idx'],\
+            detect_area_coor[0], detect_area_coor[1], detect_area_coor[2], detect_area_coor[3], line_area_coor[0], line_area_coor[1], line_area_coor[2], line_area_coor[3]), data[0])
+            cv2.imwrite('{}/extract_lines/{}-({},{})({},{})-({},{})({},{}) - before_align.png'.format(self.filename, data[1]['frame_idx'],\
+            detect_area_coor[0], detect_area_coor[1], detect_area_coor[2], detect_area_coor[3], line_area_coor[0], line_area_coor[1], line_area_coor[2], line_area_coor[3]), data[1]['before_align'])
         
         # save output of recognize_sequences
         for data in self.output_recognize_sequences:
@@ -1315,5 +1328,6 @@ if __name__ == '__main__':
     # ==================================================================
 
     ext = Extractor()
-    ext.from_video('test_dataset/第一批_20170911/VID_20170911_131636.mp4')
+    # ext.from_video('test_dataset/第一批_20170911/VID_20170911_131636.mp4')
+    ext.from_video('/home/user/VideoText/classify_frames/label_tool/raw_videos/data_20171127/VID_20171127_094148.mp4')
     ext.save()
