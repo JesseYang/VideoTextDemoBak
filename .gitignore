@@ -1,4 +1,9 @@
 output*
+test_*
+*backup.py
+*test.py
+detect
+*models
 classify_frames
 detect
 detect_text_area
